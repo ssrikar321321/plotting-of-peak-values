@@ -12,10 +12,12 @@ st.markdown("*Visualization of intensity peaks at different wavelengths with osc
 
 # File upload section
 st.sidebar.header("📁 Data Files")
+st.sidebar.info("💡 Tip: Sine wave can be displayed with just waveform data (no peaks required)")
 
 # Peak intensity files
 square_peak_file = st.sidebar.file_uploader("Square Peak Data", type=['csv'], key='square_peak')
 triangle_peak_file = st.sidebar.file_uploader("Triangle Peak Data", type=['csv'], key='triangle_peak')
+sine_peak_file = st.sidebar.file_uploader("Sine Peak Data (Optional)", type=['csv'], key='sine_peak')
 
 # Waveform files
 square_wave_file = st.sidebar.file_uploader("Square Waveform Data", type=['csv'], key='square_wave')
@@ -66,6 +68,7 @@ def load_waveform_data(file):
 # Load all data
 square_peaks = load_peak_data(square_peak_file)
 triangle_peaks = load_peak_data(triangle_peak_file)
+sine_peaks = load_peak_data(sine_peak_file)
 square_waveform = load_waveform_data(square_wave_file)
 triangle_waveform = load_waveform_data(triangle_wave_file)
 sine_waveform = load_waveform_data(sine_wave_file)
@@ -73,8 +76,8 @@ sine_waveform = load_waveform_data(sine_wave_file)
 # Check if we have data to plot
 data_available = {
     "Sine": sine_waveform is not None,
-    "Square": square_peaks is not None and square_waveform is not None,
-    "Triangle": triangle_peaks is not None and triangle_waveform is not None
+    "Square": square_waveform is not None,
+    "Triangle": triangle_waveform is not None
 }
 
 # Filter selected waveforms to only available ones
@@ -93,6 +96,7 @@ if len(plots_to_create) > 0:
                 'show_grid': True,
                 'invert_intensity': False,
                 'invert_current': False,
+                'use_abs_intensity': False,
                 'xlabel_text': 'Time (μs)',
                 'ylabel_left_text': 'Intensity (a.u.)',
                 'ylabel_right_text': 'Current (mA)',
@@ -120,7 +124,7 @@ if len(plots_to_create) > 0:
                 'current_scale': 1.0,
                 'time_min': 0,
                 'time_max': 300,
-                'intensity_min': -0.3,
+                'intensity_min': 0.0,
                 'intensity_max': 0.3,
                 'current_min': -150.0,
                 'current_max': 150.0,
@@ -158,7 +162,7 @@ if len(plots_to_create) > 0:
             peak_data = triangle_peaks
             wave_data = triangle_waveform
         else:  # Sine
-            peak_data = None
+            peak_data = sine_peaks
             wave_data = sine_waveform
         
         # Plot intensity bars if peak data exists
@@ -174,6 +178,12 @@ if len(plots_to_create) > 0:
             int_310 = peak_data[col_310].values
             int_337 = peak_data[col_337].values
             int_696 = peak_data[col_696].values
+            
+            # Apply absolute values if requested
+            if settings['use_abs_intensity']:
+                int_310 = np.abs(int_310)
+                int_337 = np.abs(int_337)
+                int_696 = np.abs(int_696)
             
             # Create bar plots
             width = settings['bar_width']
@@ -198,14 +208,28 @@ if len(plots_to_create) > 0:
         # Axis labels
         ax.set_xlabel(settings['xlabel_text'], fontsize=settings['xlabel_size'], 
                      fontweight=settings['xlabel_weight'])
-        ax.set_ylabel(settings['ylabel_left_text'], fontsize=settings['ylabel_size'], 
-                     fontweight=settings['ylabel_weight'])
+        
+        if peak_data is not None:
+            ax.set_ylabel(settings['ylabel_left_text'], fontsize=settings['ylabel_size'], 
+                         fontweight=settings['ylabel_weight'])
+        else:
+            # Hide left y-axis if no peak data
+            ax.set_yticks([])
+            ax.spines['left'].set_visible(False)
+        
         ax2.set_ylabel(settings['ylabel_right_text'], fontsize=settings['ylabel_size'], 
                       fontweight=settings['ylabel_weight'], color=color_current)
         
         # Tick formatting
-        ax.tick_params(axis='both', labelsize=settings['tick_label_size'], 
-                      width=settings['tick_width'], length=settings['tick_length'])
+        if peak_data is not None:
+            ax.tick_params(axis='both', labelsize=settings['tick_label_size'], 
+                          width=settings['tick_width'], length=settings['tick_length'])
+        else:
+            # Only x-axis if no peak data
+            ax.tick_params(axis='x', labelsize=settings['tick_label_size'], 
+                          width=settings['tick_width'], length=settings['tick_length'])
+            ax.tick_params(axis='y', which='both', left=False, labelleft=False)
+        
         ax2.tick_params(axis='y', labelcolor=color_current, labelsize=settings['tick_label_size'], 
                        width=settings['tick_width'], length=settings['tick_length'])
         
@@ -220,15 +244,31 @@ if len(plots_to_create) > 0:
         if not settings['use_auto_limits']:
             ax.set_xlim(settings['time_min'], settings['time_max'])
             if peak_data is not None:
+                # Ensure intensity limits are non-negative
+                int_min = max(0.0, float(settings['intensity_min']))
+                int_max = max(int_min + 0.001, float(settings['intensity_max']))
+                
                 if settings['invert_intensity']:
-                    ax.set_ylim(settings['intensity_max'], settings['intensity_min'])
+                    ax.set_ylim(int_max, int_min)
                 else:
-                    ax.set_ylim(settings['intensity_min'], settings['intensity_max'])
+                    ax.set_ylim(int_min, int_max)
             
             if settings['invert_current']:
                 ax2.set_ylim(settings['current_max'], settings['current_min'])
             else:
                 ax2.set_ylim(settings['current_min'], settings['current_max'])
+        else:
+            # Auto limits - ensure intensity doesn't go negative
+            if peak_data is not None:
+                current_ylim = ax.get_ylim()
+                if current_ylim[0] < 0 or current_ylim[1] < 0:
+                    # Adjust to ensure non-negative
+                    new_min = max(0.0, min(current_ylim))
+                    new_max = max(current_ylim)
+                    if settings['invert_intensity']:
+                        ax.set_ylim(new_max, new_min)
+                    else:
+                        ax.set_ylim(new_min, new_max)
         
         # Add panel label (no box)
         if settings['show_panel_label']:
@@ -296,6 +336,7 @@ if len(plots_to_create) > 0:
     # Individual plot settings
     st.markdown("---")
     st.header("🎛️ Individual Plot Settings")
+    st.info("💡 **Axis Types:** Intensity (left y-axis) must be ≥ 0 | Current (right y-axis) can be positive/negative")
     
     # Create tabs for each plot
     tabs = st.tabs([f"Plot {chr(97 + i)}) - {waveform}" for i, waveform in enumerate(plots_to_create)])
@@ -308,25 +349,50 @@ if len(plots_to_create) > 0:
             
             with col1:
                 st.subheader("📊 Plot Elements")
-                st.session_state.plot_settings[settings_key]['bar_width'] = st.slider(
-                    "Bar width (μs)", 1.0, 8.0, 
-                    st.session_state.plot_settings[settings_key]['bar_width'], 0.5, 
-                    key=f'bar_{waveform}'
-                )
+                
+                # Check if this waveform has peak data
+                has_peaks = False
+                if waveform == "Square" and square_peaks is not None:
+                    has_peaks = True
+                elif waveform == "Triangle" and triangle_peaks is not None:
+                    has_peaks = True
+                elif waveform == "Sine" and sine_peaks is not None:
+                    has_peaks = True
+                
+                if has_peaks:
+                    st.session_state.plot_settings[settings_key]['bar_width'] = st.slider(
+                        "Bar width (μs)", 1.0, 8.0, 
+                        st.session_state.plot_settings[settings_key]['bar_width'], 0.5, 
+                        key=f'bar_{waveform}'
+                    )
+                    st.session_state.plot_settings[settings_key]['use_abs_intensity'] = st.checkbox(
+                        "Use absolute intensity values (no negative)", 
+                        st.session_state.plot_settings.get(settings_key, {}).get('use_abs_intensity', False),
+                        key=f'abs_int_{waveform}',
+                        help="Convert all intensity values to positive"
+                    )
+                else:
+                    st.info("No peak intensity data - showing only current waveform")
+                
                 st.session_state.plot_settings[settings_key]['show_grid'] = st.checkbox(
                     "Show grid", 
                     st.session_state.plot_settings[settings_key]['show_grid'],
                     key=f'grid_{waveform}'
                 )
-                st.session_state.plot_settings[settings_key]['invert_intensity'] = st.checkbox(
-                    "Invert intensity axis", 
-                    st.session_state.plot_settings[settings_key]['invert_intensity'],
-                    key=f'inv_int_{waveform}'
-                )
+                
+                if has_peaks:
+                    st.session_state.plot_settings[settings_key]['invert_intensity'] = st.checkbox(
+                        "Invert intensity axis", 
+                        st.session_state.plot_settings[settings_key]['invert_intensity'],
+                        key=f'inv_int_{waveform}',
+                        help="Flip the intensity axis vertically (top ↔ bottom)"
+                    )
+                
                 st.session_state.plot_settings[settings_key]['invert_current'] = st.checkbox(
                     "Invert current axis", 
                     st.session_state.plot_settings[settings_key]['invert_current'],
-                    key=f'inv_cur_{waveform}'
+                    key=f'inv_cur_{waveform}',
+                    help="Flip the current axis vertically (top ↔ bottom)"
                 )
                 
                 st.markdown("**Current Waveform:**")
@@ -419,35 +485,48 @@ if len(plots_to_create) > 0:
             
             with col3:
                 st.subheader("📌 Legend & Panel Label")
-                st.session_state.plot_settings[settings_key]['show_legend'] = st.checkbox(
-                    "Show legend", 
-                    st.session_state.plot_settings[settings_key]['show_legend'],
-                    key=f'leg_{waveform}'
-                )
                 
-                subcol1, subcol2 = st.columns(2)
-                with subcol1:
-                    st.session_state.plot_settings[settings_key]['legend_x'] = st.slider(
-                        "Legend X pos", 0.0, 1.0, 
-                        st.session_state.plot_settings[settings_key]['legend_x'], 0.01,
-                        key=f'leg_x_{waveform}'
+                # Check if this waveform has peak data
+                has_peaks = False
+                if waveform == "Square" and square_peaks is not None:
+                    has_peaks = True
+                elif waveform == "Triangle" and triangle_peaks is not None:
+                    has_peaks = True
+                elif waveform == "Sine" and sine_peaks is not None:
+                    has_peaks = True
+                
+                if has_peaks:
+                    st.session_state.plot_settings[settings_key]['show_legend'] = st.checkbox(
+                        "Show legend", 
+                        st.session_state.plot_settings[settings_key]['show_legend'],
+                        key=f'leg_{waveform}'
                     )
-                    st.session_state.plot_settings[settings_key]['legend_y'] = st.slider(
-                        "Legend Y pos", 0.0, 1.0, 
-                        st.session_state.plot_settings[settings_key]['legend_y'], 0.01,
-                        key=f'leg_y_{waveform}'
-                    )
-                with subcol2:
-                    st.session_state.plot_settings[settings_key]['legend_fontsize'] = st.slider(
-                        "Legend font size", 6, 16, 
-                        st.session_state.plot_settings[settings_key]['legend_fontsize'],
-                        key=f'leg_fs_{waveform}'
-                    )
-                    st.session_state.plot_settings[settings_key]['legend_ncol'] = st.slider(
-                        "Legend columns", 1, 3, 
-                        st.session_state.plot_settings[settings_key]['legend_ncol'],
-                        key=f'leg_nc_{waveform}'
-                    )
+                    
+                    subcol1, subcol2 = st.columns(2)
+                    with subcol1:
+                        st.session_state.plot_settings[settings_key]['legend_x'] = st.slider(
+                            "Legend X pos", 0.0, 1.0, 
+                            st.session_state.plot_settings[settings_key]['legend_x'], 0.01,
+                            key=f'leg_x_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['legend_y'] = st.slider(
+                            "Legend Y pos", 0.0, 1.0, 
+                            st.session_state.plot_settings[settings_key]['legend_y'], 0.01,
+                            key=f'leg_y_{waveform}'
+                        )
+                    with subcol2:
+                        st.session_state.plot_settings[settings_key]['legend_fontsize'] = st.slider(
+                            "Legend font size", 6, 16, 
+                            st.session_state.plot_settings[settings_key]['legend_fontsize'],
+                            key=f'leg_fs_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['legend_ncol'] = st.slider(
+                            "Legend columns", 1, 3, 
+                            st.session_state.plot_settings[settings_key]['legend_ncol'],
+                            key=f'leg_nc_{waveform}'
+                        )
+                else:
+                    st.info("No peak data - legend not available")
                 
                 st.markdown("**Panel Label:**")
                 st.session_state.plot_settings[settings_key]['show_panel_label'] = st.checkbox(
@@ -482,16 +561,24 @@ if len(plots_to_create) > 0:
                 )
                 
                 if not st.session_state.plot_settings[settings_key]['use_auto_limits']:
+                    if has_peaks:
+                        st.info("💡 Intensity axis: values must be ≥ 0 | Current axis: can be negative")
+                    
                     subcol1, subcol2 = st.columns(2)
                     with subcol1:
                         st.session_state.plot_settings[settings_key]['time_min'] = st.number_input(
                             "Time min (μs)", value=st.session_state.plot_settings[settings_key]['time_min'],
                             key=f'tmin_{waveform}'
                         )
-                        st.session_state.plot_settings[settings_key]['intensity_min'] = st.number_input(
-                            "Intensity min", value=st.session_state.plot_settings[settings_key]['intensity_min'],
-                            format="%.2f", key=f'imin_{waveform}'
-                        )
+                        if has_peaks:
+                            st.session_state.plot_settings[settings_key]['intensity_min'] = st.number_input(
+                                "Intensity min", 
+                                min_value=0.0,
+                                value=float(st.session_state.plot_settings[settings_key]['intensity_min']),
+                                format="%.3f", 
+                                key=f'imin_{waveform}',
+                                help="Intensity values must be >= 0"
+                            )
                         st.session_state.plot_settings[settings_key]['current_min'] = st.number_input(
                             "Current min (mA)", value=st.session_state.plot_settings[settings_key]['current_min'],
                             format="%.1f", key=f'cmin_{waveform}'
@@ -501,10 +588,15 @@ if len(plots_to_create) > 0:
                             "Time max (μs)", value=st.session_state.plot_settings[settings_key]['time_max'],
                             key=f'tmax_{waveform}'
                         )
-                        st.session_state.plot_settings[settings_key]['intensity_max'] = st.number_input(
-                            "Intensity max", value=st.session_state.plot_settings[settings_key]['intensity_max'],
-                            format="%.2f", key=f'imax_{waveform}'
-                        )
+                        if has_peaks:
+                            st.session_state.plot_settings[settings_key]['intensity_max'] = st.number_input(
+                                "Intensity max", 
+                                min_value=0.001,
+                                value=float(st.session_state.plot_settings[settings_key]['intensity_max']),
+                                format="%.3f", 
+                                key=f'imax_{waveform}',
+                                help="Intensity values must be > 0"
+                            )
                         st.session_state.plot_settings[settings_key]['current_max'] = st.number_input(
                             "Current max (mA)", value=st.session_state.plot_settings[settings_key]['current_max'],
                             format="%.1f", key=f'cmax_{waveform}'
@@ -517,8 +609,8 @@ if len(plots_to_create) > 0:
     st.markdown("---")
     st.subheader("📊 Data Tables")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(
-        ["Square Peaks", "Triangle Peaks", "Square Wave", "Triangle Wave", "Sine Wave"]
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(
+        ["Square Peaks", "Triangle Peaks", "Sine Peaks", "Square Wave", "Triangle Wave", "Sine Wave"]
     )
     
     with tab1:
@@ -534,20 +626,26 @@ if len(plots_to_create) > 0:
             st.info("Upload triangle peak data file")
     
     with tab3:
+        if sine_peaks is not None:
+            st.dataframe(sine_peaks, use_container_width=True)
+        else:
+            st.info("Upload sine peak data file (optional)")
+    
+    with tab4:
         if square_waveform is not None:
             st.dataframe(square_waveform.head(100), use_container_width=True)
             st.caption(f"Showing first 100 of {len(square_waveform)} rows")
         else:
             st.info("Upload square waveform data file")
     
-    with tab4:
+    with tab5:
         if triangle_waveform is not None:
             st.dataframe(triangle_waveform.head(100), use_container_width=True)
             st.caption(f"Showing first 100 of {len(triangle_waveform)} rows")
         else:
             st.info("Upload triangle waveform data file")
     
-    with tab5:
+    with tab6:
         if sine_waveform is not None:
             st.dataframe(sine_waveform.head(100), use_container_width=True)
             st.caption(f"Showing first 100 of {len(sine_waveform)} rows")
@@ -561,17 +659,26 @@ else:
         st.markdown("""
         ### Peak Intensity Files (CSV)
         **Columns:** `Time(us), 310.0 nm, 337.0 nm, 696.00 nm`
-        - Square: `square_peak_comparison.csv`
-        - Triangle: `Triangle_peak_comparison.csv`
+        - Square: `square_peak_comparison.csv` (Required if showing square)
+        - Triangle: `Triangle_peak_comparison.csv` (Required if showing triangle)
+        - Sine: Peak data file (Optional - sine can show current waveform only)
+        
+        **Note:** Intensity values should be non-negative (≥ 0). If your data contains negative values, 
+        use the "Use absolute intensity values" option to convert them to positive.
         
         ### Waveform Files (CSV)
         **Columns:** `Time, Voltage, Current`
         - Time in seconds (will be converted to μs)
-        - Current in mA
+        - Current in mA (can be positive or negative)
         - Files:
           - `Square Power Calculation_SINGLE CHANNEL 1.csv`
           - `Triangular Power Calculation__SINGLE CHANNEL.csv`
           - `Sine Power Calculation_SINGLE CHANNEL 1.csv`
+        
+        ### Axis Constraints:
+        - **Intensity Axis (left)**: Must be ≥ 0 (peak values cannot be negative)
+        - **Current Axis (right)**: Can have both positive and negative values
+        - **Time Axis**: Typically starts at 0, measured in microseconds (μs)
         """)
 
 # Footer
