@@ -22,20 +22,13 @@ square_wave_file = st.sidebar.file_uploader("Square Waveform Data", type=['csv']
 triangle_wave_file = st.sidebar.file_uploader("Triangle Waveform Data", type=['csv'], key='triangle_wave')
 sine_wave_file = st.sidebar.file_uploader("Sine Waveform Data", type=['csv'], key='sine_wave')
 
-# Plot settings
-st.sidebar.header("⚙️ Plot Settings")
+# Global settings
+st.sidebar.header("⚙️ General Settings")
 waveforms_to_plot = st.sidebar.multiselect(
     "Select waveforms to display",
     ["Sine", "Square", "Triangle"],
     default=["Sine", "Square", "Triangle"]
 )
-
-bar_width = st.sidebar.slider("Bar width (μs)", 1.0, 8.0, 4.0, 0.5)
-show_grid = st.sidebar.checkbox("Show grid", value=True)
-
-st.sidebar.markdown("**Axis Inversions:**")
-invert_intensity = st.sidebar.checkbox("Invert intensity axis (flip top-bottom)", value=False)
-invert_current = st.sidebar.checkbox("Invert current axis (flip top-bottom)", value=False)
 
 # Font settings
 st.sidebar.subheader("🔤 Font Settings")
@@ -43,73 +36,13 @@ font_family = st.sidebar.selectbox("Font family",
     ["Times New Roman", "Arial", "Helvetica", "sans-serif", "serif"], 
     index=0)
 
-# Axis label settings
-st.sidebar.subheader("📝 Axis Labels")
-xlabel_text = st.sidebar.text_input("X-axis label", "Time (μs)")
-ylabel_left_text = st.sidebar.text_input("Y-axis left label", "Intensity (a.u.)")
-ylabel_right_text = st.sidebar.text_input("Y-axis right label", "Current (mA)")
-
-xlabel_size = st.sidebar.slider("X-axis label size", 8, 24, 16)
-ylabel_size = st.sidebar.slider("Y-axis label size", 8, 24, 16)
-xlabel_weight = st.sidebar.selectbox("X-axis label weight", ["normal", "bold"], index=1)
-ylabel_weight = st.sidebar.selectbox("Y-axis label weight", ["normal", "bold"], index=1)
-
-# Tick settings
-st.sidebar.subheader("📏 Tick Settings")
-tick_label_size = st.sidebar.slider("Tick label size", 8, 20, 13)
-tick_width = st.sidebar.slider("Tick width", 0.5, 3.0, 1.5, 0.1)
-tick_length = st.sidebar.slider("Tick length", 2, 12, 6)
-
-# Axis line settings
-st.sidebar.subheader("📐 Axis Lines")
-axis_linewidth = st.sidebar.slider("Axis line width", 0.5, 4.0, 1.5, 0.1)
-
-# Legend settings
-st.sidebar.subheader("📌 Legend Settings")
-show_legend = st.sidebar.checkbox("Show legend", value=True)
-legend_fontsize = st.sidebar.slider("Legend font size", 6, 16, 11)
-legend_framealpha = st.sidebar.slider("Legend transparency", 0.0, 1.0, 0.95, 0.05)
-legend_x = st.sidebar.slider("Legend X position", 0.0, 1.0, 0.02, 0.01)
-legend_y = st.sidebar.slider("Legend Y position", 0.0, 1.0, 0.98, 0.01)
-legend_ncol = st.sidebar.slider("Legend columns", 1, 3, 1)
-
-# Panel label settings
-st.sidebar.subheader("🔤 Panel Labels")
-show_panel_labels = st.sidebar.checkbox("Show panel labels (a, b, c)", value=True)
-panel_label_size = st.sidebar.slider("Panel label size", 10, 24, 18)
-panel_label_x = st.sidebar.slider("Panel label X position", 0.0, 1.0, 0.02, 0.01)
-panel_label_y = st.sidebar.slider("Panel label Y position", 0.0, 1.0, 0.98, 0.01)
-
-# Color settings
-st.sidebar.subheader("🎨 Colors")
+# Global color settings
+st.sidebar.subheader("🎨 Global Colors")
 col1, col2 = st.sidebar.columns(2)
 color_310 = col1.color_picker("310 nm", "#5DA5DA")
 color_337 = col2.color_picker("337 nm", "#FAA43A")
 color_696 = col1.color_picker("696 nm", "#60BD68")
 color_current = col2.color_picker("Current", "#FF0000")
-
-# Line settings
-st.sidebar.subheader("📈 Line Settings")
-current_linewidth = st.sidebar.slider("Current line width", 0.5, 5.0, 2.5, 0.1)
-st.sidebar.markdown("**Current Adjustments:**")
-current_offset = st.sidebar.slider("Current offset (mA)", -100.0, 100.0, 0.0, 0.5, 
-                                   help="Shift current waveform up/down")
-current_scale = st.sidebar.slider("Current scale factor", 0.1, 3.0, 1.0, 0.1,
-                                  help="Multiply current values by this factor")
-
-# Axis ranges
-st.sidebar.subheader("📊 Axis Ranges")
-use_auto_limits = st.sidebar.checkbox("Auto axis limits", value=False)
-if not use_auto_limits:
-    time_min = st.sidebar.number_input("Time min (μs)", value=0)
-    time_max = st.sidebar.number_input("Time max (μs)", value=300)
-    
-    col1, col2 = st.sidebar.columns(2)
-    intensity_min = col1.number_input("Intensity min", value=-0.3, format="%.2f")
-    intensity_max = col2.number_input("Intensity max", value=0.3, format="%.2f")
-    
-    current_min = col1.number_input("Current min (mA)", value=-150.0, format="%.1f")
-    current_max = col2.number_input("Current max (mA)", value=150.0, format="%.1f")
 
 # Function to load and process data
 @st.cache_data
@@ -149,9 +82,53 @@ plots_to_create = [w for w in waveforms_to_plot if data_available.get(w, False)]
 
 if len(plots_to_create) > 0:
     
+    # Initialize settings for each plot if not exists
+    if 'plot_settings' not in st.session_state:
+        st.session_state.plot_settings = {}
+    
+    for waveform in plots_to_create:
+        if waveform not in st.session_state.plot_settings:
+            st.session_state.plot_settings[waveform] = {
+                'bar_width': 4.0,
+                'show_grid': True,
+                'invert_intensity': False,
+                'invert_current': False,
+                'xlabel_text': 'Time (μs)',
+                'ylabel_left_text': 'Intensity (a.u.)',
+                'ylabel_right_text': 'Current (mA)',
+                'xlabel_size': 16,
+                'ylabel_size': 16,
+                'xlabel_weight': 'bold',
+                'ylabel_weight': 'bold',
+                'tick_label_size': 13,
+                'tick_width': 1.5,
+                'tick_length': 6,
+                'axis_linewidth': 1.5,
+                'show_legend': True,
+                'legend_fontsize': 11,
+                'legend_framealpha': 0.95,
+                'legend_x': 0.02,
+                'legend_y': 0.98,
+                'legend_ncol': 1,
+                'show_panel_label': True,
+                'panel_label_size': 18,
+                'panel_label_x': 0.02,
+                'panel_label_y': 0.98,
+                'current_linewidth': 2.5,
+                'current_time_offset': 0.0,
+                'current_y_offset': 0.0,
+                'current_scale': 1.0,
+                'time_min': 0,
+                'time_max': 300,
+                'intensity_min': -0.3,
+                'intensity_max': 0.3,
+                'current_min': -150.0,
+                'current_max': 150.0,
+                'use_auto_limits': False
+            }
+    
     # Set matplotlib font
     rcParams['font.family'] = font_family
-    rcParams['font.size'] = tick_label_size
     
     # Create figure with subplots
     num_plots = len(plots_to_create)
@@ -165,11 +142,13 @@ if len(plots_to_create) > 0:
         ax = axes[idx]
         ax2 = ax.twinx()
         
+        settings = st.session_state.plot_settings[waveform_type]
+        
         # Set axis line width
         for spine in ax.spines.values():
-            spine.set_linewidth(axis_linewidth)
+            spine.set_linewidth(settings['axis_linewidth'])
         for spine in ax2.spines.values():
-            spine.set_linewidth(axis_linewidth)
+            spine.set_linewidth(settings['axis_linewidth'])
         
         # Get appropriate data
         if waveform_type == "Square":
@@ -197,7 +176,7 @@ if len(plots_to_create) > 0:
             int_696 = peak_data[col_696].values
             
             # Create bar plots
-            width = bar_width
+            width = settings['bar_width']
             ax.bar(time - width, int_310, width=width, 
                    label='310.0 nm', color=color_310, alpha=0.8, edgecolor='none')
             ax.bar(time, int_337, width=width, 
@@ -205,71 +184,72 @@ if len(plots_to_create) > 0:
             ax.bar(time + width, int_696, width=width, 
                    label='696.0 nm', color=color_696, alpha=0.8, edgecolor='none')
         
-        # Plot current waveform
+        # Plot current waveform with time offset
         if wave_data is not None and 'Time_us' in wave_data.columns:
-            time_wave = wave_data['Time_us'].values
+            time_wave = wave_data['Time_us'].values + settings['current_time_offset']
             current = wave_data['Current'].values
             
-            # Apply scale and offset to current
-            current_adjusted = (current * current_scale) + current_offset
+            # Apply y scale and offset to current
+            current_adjusted = (current * settings['current_scale']) + settings['current_y_offset']
             
             ax2.plot(time_wave, current_adjusted, color=color_current, 
-                    linewidth=current_linewidth, label='Current')
+                    linewidth=settings['current_linewidth'], label='Current')
         
         # Axis labels
-        ax.set_xlabel(xlabel_text, fontsize=xlabel_size, fontweight=xlabel_weight)
-        ax.set_ylabel(ylabel_left_text, fontsize=ylabel_size, fontweight=ylabel_weight)
-        ax2.set_ylabel(ylabel_right_text, fontsize=ylabel_size, fontweight=ylabel_weight, 
-                      color=color_current)
+        ax.set_xlabel(settings['xlabel_text'], fontsize=settings['xlabel_size'], 
+                     fontweight=settings['xlabel_weight'])
+        ax.set_ylabel(settings['ylabel_left_text'], fontsize=settings['ylabel_size'], 
+                     fontweight=settings['ylabel_weight'])
+        ax2.set_ylabel(settings['ylabel_right_text'], fontsize=settings['ylabel_size'], 
+                      fontweight=settings['ylabel_weight'], color=color_current)
         
         # Tick formatting
-        ax.tick_params(axis='both', labelsize=tick_label_size, 
-                      width=tick_width, length=tick_length)
-        ax2.tick_params(axis='y', labelcolor=color_current, labelsize=tick_label_size, 
-                       width=tick_width, length=tick_length)
+        ax.tick_params(axis='both', labelsize=settings['tick_label_size'], 
+                      width=settings['tick_width'], length=settings['tick_length'])
+        ax2.tick_params(axis='y', labelcolor=color_current, labelsize=settings['tick_label_size'], 
+                       width=settings['tick_width'], length=settings['tick_length'])
         
         # Apply axis inversions AFTER all plotting
-        if invert_intensity and peak_data is not None:
+        if settings['invert_intensity'] and peak_data is not None:
             ax.invert_yaxis()
         
-        if invert_current:
+        if settings['invert_current']:
             ax2.invert_yaxis()
         
         # Set axis limits (after inversion)
-        if not use_auto_limits:
-            ax.set_xlim(time_min, time_max)
+        if not settings['use_auto_limits']:
+            ax.set_xlim(settings['time_min'], settings['time_max'])
             if peak_data is not None:
-                if invert_intensity:
-                    ax.set_ylim(intensity_max, intensity_min)  # Reversed for inverted axis
+                if settings['invert_intensity']:
+                    ax.set_ylim(settings['intensity_max'], settings['intensity_min'])
                 else:
-                    ax.set_ylim(intensity_min, intensity_max)
+                    ax.set_ylim(settings['intensity_min'], settings['intensity_max'])
             
-            if invert_current:
-                ax2.set_ylim(current_max, current_min)  # Reversed for inverted axis
+            if settings['invert_current']:
+                ax2.set_ylim(settings['current_max'], settings['current_min'])
             else:
-                ax2.set_ylim(current_min, current_max)
+                ax2.set_ylim(settings['current_min'], settings['current_max'])
         
-        # Add panel label
-        if show_panel_labels:
+        # Add panel label (no box)
+        if settings['show_panel_label']:
             panel_label = chr(97 + idx)  # a, b, c
-            ax.text(panel_label_x, panel_label_y, f'{panel_label})', 
+            ax.text(settings['panel_label_x'], settings['panel_label_y'], f'{panel_label})', 
                    transform=ax.transAxes, 
-                   fontsize=panel_label_size, fontweight='bold', 
-                   va='top', ha='left',
-                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+                   fontsize=settings['panel_label_size'], fontweight='bold', 
+                   va='top', ha='left')
         
-        # Legend
-        if show_legend and peak_data is not None:
-            ax.legend(loc='upper left', 
-                     bbox_to_anchor=(legend_x, legend_y),
-                     fontsize=legend_fontsize, 
-                     framealpha=legend_framealpha, 
-                     edgecolor='black', 
-                     fancybox=False,
-                     ncol=legend_ncol)
+        # Legend (no box)
+        if settings['show_legend'] and peak_data is not None:
+            legend = ax.legend(loc='upper left', 
+                     bbox_to_anchor=(settings['legend_x'], settings['legend_y']),
+                     fontsize=settings['legend_fontsize'], 
+                     framealpha=settings['legend_framealpha'], 
+                     edgecolor='none',
+                     frameon=False,
+                     ncol=settings['legend_ncol'])
         
         # Grid
-        if show_grid:
+        if settings['show_grid']:
             ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8)
     
     plt.tight_layout()
@@ -312,6 +292,226 @@ if len(plots_to_create) > 0:
             file_name="spectral_intensity_plot.svg",
             mime="image/svg+xml"
         )
+    
+    # Individual plot settings
+    st.markdown("---")
+    st.header("🎛️ Individual Plot Settings")
+    
+    # Create tabs for each plot
+    tabs = st.tabs([f"Plot {chr(97 + i)}) - {waveform}" for i, waveform in enumerate(plots_to_create)])
+    
+    for idx, (tab, waveform) in enumerate(zip(tabs, plots_to_create)):
+        with tab:
+            settings_key = waveform
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.subheader("📊 Plot Elements")
+                st.session_state.plot_settings[settings_key]['bar_width'] = st.slider(
+                    "Bar width (μs)", 1.0, 8.0, 
+                    st.session_state.plot_settings[settings_key]['bar_width'], 0.5, 
+                    key=f'bar_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['show_grid'] = st.checkbox(
+                    "Show grid", 
+                    st.session_state.plot_settings[settings_key]['show_grid'],
+                    key=f'grid_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['invert_intensity'] = st.checkbox(
+                    "Invert intensity axis", 
+                    st.session_state.plot_settings[settings_key]['invert_intensity'],
+                    key=f'inv_int_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['invert_current'] = st.checkbox(
+                    "Invert current axis", 
+                    st.session_state.plot_settings[settings_key]['invert_current'],
+                    key=f'inv_cur_{waveform}'
+                )
+                
+                st.markdown("**Current Waveform:**")
+                st.session_state.plot_settings[settings_key]['current_linewidth'] = st.slider(
+                    "Line width", 0.5, 5.0, 
+                    st.session_state.plot_settings[settings_key]['current_linewidth'], 0.1,
+                    key=f'lw_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['current_time_offset'] = st.slider(
+                    "Time offset (μs)", -200.0, 200.0, 
+                    st.session_state.plot_settings[settings_key]['current_time_offset'], 0.5,
+                    key=f'time_off_{waveform}',
+                    help="Shift current waveform left/right on time axis"
+                )
+                st.session_state.plot_settings[settings_key]['current_y_offset'] = st.slider(
+                    "Y offset (mA)", -100.0, 100.0, 
+                    st.session_state.plot_settings[settings_key]['current_y_offset'], 0.5,
+                    key=f'y_off_{waveform}',
+                    help="Shift current waveform up/down"
+                )
+                st.session_state.plot_settings[settings_key]['current_scale'] = st.slider(
+                    "Y scale factor", 0.1, 3.0, 
+                    st.session_state.plot_settings[settings_key]['current_scale'], 0.1,
+                    key=f'scale_{waveform}'
+                )
+            
+            with col2:
+                st.subheader("📝 Labels & Ticks")
+                st.session_state.plot_settings[settings_key]['xlabel_text'] = st.text_input(
+                    "X-axis label", 
+                    st.session_state.plot_settings[settings_key]['xlabel_text'],
+                    key=f'xlab_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['ylabel_left_text'] = st.text_input(
+                    "Y-axis left label", 
+                    st.session_state.plot_settings[settings_key]['ylabel_left_text'],
+                    key=f'ylab_l_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['ylabel_right_text'] = st.text_input(
+                    "Y-axis right label", 
+                    st.session_state.plot_settings[settings_key]['ylabel_right_text'],
+                    key=f'ylab_r_{waveform}'
+                )
+                
+                subcol1, subcol2 = st.columns(2)
+                with subcol1:
+                    st.session_state.plot_settings[settings_key]['xlabel_size'] = st.number_input(
+                        "X label size", 8, 24, 
+                        st.session_state.plot_settings[settings_key]['xlabel_size'],
+                        key=f'xlab_s_{waveform}'
+                    )
+                    st.session_state.plot_settings[settings_key]['ylabel_size'] = st.number_input(
+                        "Y label size", 8, 24, 
+                        st.session_state.plot_settings[settings_key]['ylabel_size'],
+                        key=f'ylab_s_{waveform}'
+                    )
+                with subcol2:
+                    st.session_state.plot_settings[settings_key]['xlabel_weight'] = st.selectbox(
+                        "X label weight", ["normal", "bold"],
+                        index=["normal", "bold"].index(st.session_state.plot_settings[settings_key]['xlabel_weight']),
+                        key=f'xlab_w_{waveform}'
+                    )
+                    st.session_state.plot_settings[settings_key]['ylabel_weight'] = st.selectbox(
+                        "Y label weight", ["normal", "bold"],
+                        index=["normal", "bold"].index(st.session_state.plot_settings[settings_key]['ylabel_weight']),
+                        key=f'ylab_w_{waveform}'
+                    )
+                
+                st.markdown("**Ticks:**")
+                st.session_state.plot_settings[settings_key]['tick_label_size'] = st.slider(
+                    "Tick label size", 8, 20, 
+                    st.session_state.plot_settings[settings_key]['tick_label_size'],
+                    key=f'tick_s_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['tick_width'] = st.slider(
+                    "Tick width", 0.5, 3.0, 
+                    st.session_state.plot_settings[settings_key]['tick_width'], 0.1,
+                    key=f'tick_w_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['tick_length'] = st.slider(
+                    "Tick length", 2, 12, 
+                    st.session_state.plot_settings[settings_key]['tick_length'],
+                    key=f'tick_l_{waveform}'
+                )
+                st.session_state.plot_settings[settings_key]['axis_linewidth'] = st.slider(
+                    "Axis line width", 0.5, 4.0, 
+                    st.session_state.plot_settings[settings_key]['axis_linewidth'], 0.1,
+                    key=f'axis_w_{waveform}'
+                )
+            
+            with col3:
+                st.subheader("📌 Legend & Panel Label")
+                st.session_state.plot_settings[settings_key]['show_legend'] = st.checkbox(
+                    "Show legend", 
+                    st.session_state.plot_settings[settings_key]['show_legend'],
+                    key=f'leg_{waveform}'
+                )
+                
+                subcol1, subcol2 = st.columns(2)
+                with subcol1:
+                    st.session_state.plot_settings[settings_key]['legend_x'] = st.slider(
+                        "Legend X pos", 0.0, 1.0, 
+                        st.session_state.plot_settings[settings_key]['legend_x'], 0.01,
+                        key=f'leg_x_{waveform}'
+                    )
+                    st.session_state.plot_settings[settings_key]['legend_y'] = st.slider(
+                        "Legend Y pos", 0.0, 1.0, 
+                        st.session_state.plot_settings[settings_key]['legend_y'], 0.01,
+                        key=f'leg_y_{waveform}'
+                    )
+                with subcol2:
+                    st.session_state.plot_settings[settings_key]['legend_fontsize'] = st.slider(
+                        "Legend font size", 6, 16, 
+                        st.session_state.plot_settings[settings_key]['legend_fontsize'],
+                        key=f'leg_fs_{waveform}'
+                    )
+                    st.session_state.plot_settings[settings_key]['legend_ncol'] = st.slider(
+                        "Legend columns", 1, 3, 
+                        st.session_state.plot_settings[settings_key]['legend_ncol'],
+                        key=f'leg_nc_{waveform}'
+                    )
+                
+                st.markdown("**Panel Label:**")
+                st.session_state.plot_settings[settings_key]['show_panel_label'] = st.checkbox(
+                    "Show panel label", 
+                    st.session_state.plot_settings[settings_key]['show_panel_label'],
+                    key=f'pan_{waveform}'
+                )
+                subcol1, subcol2 = st.columns(2)
+                with subcol1:
+                    st.session_state.plot_settings[settings_key]['panel_label_x'] = st.slider(
+                        "Label X pos", 0.0, 1.0, 
+                        st.session_state.plot_settings[settings_key]['panel_label_x'], 0.01,
+                        key=f'pan_x_{waveform}'
+                    )
+                with subcol2:
+                    st.session_state.plot_settings[settings_key]['panel_label_y'] = st.slider(
+                        "Label Y pos", 0.0, 1.0, 
+                        st.session_state.plot_settings[settings_key]['panel_label_y'], 0.01,
+                        key=f'pan_y_{waveform}'
+                    )
+                st.session_state.plot_settings[settings_key]['panel_label_size'] = st.slider(
+                    "Label size", 10, 24, 
+                    st.session_state.plot_settings[settings_key]['panel_label_size'],
+                    key=f'pan_s_{waveform}'
+                )
+                
+                st.markdown("**Axis Ranges:**")
+                st.session_state.plot_settings[settings_key]['use_auto_limits'] = st.checkbox(
+                    "Auto limits", 
+                    st.session_state.plot_settings[settings_key]['use_auto_limits'],
+                    key=f'auto_{waveform}'
+                )
+                
+                if not st.session_state.plot_settings[settings_key]['use_auto_limits']:
+                    subcol1, subcol2 = st.columns(2)
+                    with subcol1:
+                        st.session_state.plot_settings[settings_key]['time_min'] = st.number_input(
+                            "Time min (μs)", value=st.session_state.plot_settings[settings_key]['time_min'],
+                            key=f'tmin_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['intensity_min'] = st.number_input(
+                            "Intensity min", value=st.session_state.plot_settings[settings_key]['intensity_min'],
+                            format="%.2f", key=f'imin_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['current_min'] = st.number_input(
+                            "Current min (mA)", value=st.session_state.plot_settings[settings_key]['current_min'],
+                            format="%.1f", key=f'cmin_{waveform}'
+                        )
+                    with subcol2:
+                        st.session_state.plot_settings[settings_key]['time_max'] = st.number_input(
+                            "Time max (μs)", value=st.session_state.plot_settings[settings_key]['time_max'],
+                            key=f'tmax_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['intensity_max'] = st.number_input(
+                            "Intensity max", value=st.session_state.plot_settings[settings_key]['intensity_max'],
+                            format="%.2f", key=f'imax_{waveform}'
+                        )
+                        st.session_state.plot_settings[settings_key]['current_max'] = st.number_input(
+                            "Current max (mA)", value=st.session_state.plot_settings[settings_key]['current_max'],
+                            format="%.1f", key=f'cmax_{waveform}'
+                        )
+            
+            if st.button(f"🔄 Update Plot {chr(97 + idx)})", key=f'update_{waveform}'):
+                st.rerun()
     
     # Show data tables
     st.markdown("---")
