@@ -5,11 +5,6 @@ import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import io
 
-# Set matplotlib defaults
-rcParams['font.size'] = 14
-rcParams['font.family'] = 'sans-serif'
-rcParams['axes.linewidth'] = 1.5
-
 st.set_page_config(page_title="Oscilloscope Spectral Analysis", layout="wide")
 
 st.title("Spectral Intensity & Current Waveform Analysis")
@@ -37,7 +32,53 @@ waveforms_to_plot = st.sidebar.multiselect(
 
 bar_width = st.sidebar.slider("Bar width (μs)", 1.0, 8.0, 4.0, 0.5)
 show_grid = st.sidebar.checkbox("Show grid", value=True)
-invert_intensity = st.sidebar.checkbox("Invert intensity axis", value=True)
+
+st.sidebar.markdown("**Axis Inversions:**")
+invert_intensity = st.sidebar.checkbox("Invert intensity axis (flip top-bottom)", value=False)
+invert_current = st.sidebar.checkbox("Invert current axis (flip top-bottom)", value=False)
+
+# Font settings
+st.sidebar.subheader("🔤 Font Settings")
+font_family = st.sidebar.selectbox("Font family", 
+    ["Times New Roman", "Arial", "Helvetica", "sans-serif", "serif"], 
+    index=0)
+
+# Axis label settings
+st.sidebar.subheader("📝 Axis Labels")
+xlabel_text = st.sidebar.text_input("X-axis label", "Time (μs)")
+ylabel_left_text = st.sidebar.text_input("Y-axis left label", "Intensity (a.u.)")
+ylabel_right_text = st.sidebar.text_input("Y-axis right label", "Current (mA)")
+
+xlabel_size = st.sidebar.slider("X-axis label size", 8, 24, 16)
+ylabel_size = st.sidebar.slider("Y-axis label size", 8, 24, 16)
+xlabel_weight = st.sidebar.selectbox("X-axis label weight", ["normal", "bold"], index=1)
+ylabel_weight = st.sidebar.selectbox("Y-axis label weight", ["normal", "bold"], index=1)
+
+# Tick settings
+st.sidebar.subheader("📏 Tick Settings")
+tick_label_size = st.sidebar.slider("Tick label size", 8, 20, 13)
+tick_width = st.sidebar.slider("Tick width", 0.5, 3.0, 1.5, 0.1)
+tick_length = st.sidebar.slider("Tick length", 2, 12, 6)
+
+# Axis line settings
+st.sidebar.subheader("📐 Axis Lines")
+axis_linewidth = st.sidebar.slider("Axis line width", 0.5, 4.0, 1.5, 0.1)
+
+# Legend settings
+st.sidebar.subheader("📌 Legend Settings")
+show_legend = st.sidebar.checkbox("Show legend", value=True)
+legend_fontsize = st.sidebar.slider("Legend font size", 6, 16, 11)
+legend_framealpha = st.sidebar.slider("Legend transparency", 0.0, 1.0, 0.95, 0.05)
+legend_x = st.sidebar.slider("Legend X position", 0.0, 1.0, 0.02, 0.01)
+legend_y = st.sidebar.slider("Legend Y position", 0.0, 1.0, 0.98, 0.01)
+legend_ncol = st.sidebar.slider("Legend columns", 1, 3, 1)
+
+# Panel label settings
+st.sidebar.subheader("🔤 Panel Labels")
+show_panel_labels = st.sidebar.checkbox("Show panel labels (a, b, c)", value=True)
+panel_label_size = st.sidebar.slider("Panel label size", 10, 24, 18)
+panel_label_x = st.sidebar.slider("Panel label X position", 0.0, 1.0, 0.02, 0.01)
+panel_label_y = st.sidebar.slider("Panel label Y position", 0.0, 1.0, 0.98, 0.01)
 
 # Color settings
 st.sidebar.subheader("🎨 Colors")
@@ -47,17 +88,34 @@ color_337 = col2.color_picker("337 nm", "#FAA43A")
 color_696 = col1.color_picker("696 nm", "#60BD68")
 color_current = col2.color_picker("Current", "#FF0000")
 
+# Line settings
+st.sidebar.subheader("📈 Line Settings")
+current_linewidth = st.sidebar.slider("Current line width", 0.5, 5.0, 2.5, 0.1)
+st.sidebar.markdown("**Current Adjustments:**")
+current_offset = st.sidebar.slider("Current offset (mA)", -100.0, 100.0, 0.0, 0.5, 
+                                   help="Shift current waveform up/down")
+current_scale = st.sidebar.slider("Current scale factor", 0.1, 3.0, 1.0, 0.1,
+                                  help="Multiply current values by this factor")
+
 # Axis ranges
 st.sidebar.subheader("📊 Axis Ranges")
-time_min = st.sidebar.number_input("Time min (μs)", value=0)
-time_max = st.sidebar.number_input("Time max (μs)", value=300)
+use_auto_limits = st.sidebar.checkbox("Auto axis limits", value=False)
+if not use_auto_limits:
+    time_min = st.sidebar.number_input("Time min (μs)", value=0)
+    time_max = st.sidebar.number_input("Time max (μs)", value=300)
+    
+    col1, col2 = st.sidebar.columns(2)
+    intensity_min = col1.number_input("Intensity min", value=-0.3, format="%.2f")
+    intensity_max = col2.number_input("Intensity max", value=0.3, format="%.2f")
+    
+    current_min = col1.number_input("Current min (mA)", value=-150.0, format="%.1f")
+    current_max = col2.number_input("Current max (mA)", value=150.0, format="%.1f")
 
 # Function to load and process data
 @st.cache_data
 def load_peak_data(file):
     if file is not None:
         df = pd.read_csv(file)
-        # Standardize column names
         df.columns = df.columns.str.strip()
         return df
     return None
@@ -67,7 +125,6 @@ def load_waveform_data(file):
     if file is not None:
         df = pd.read_csv(file)
         df.columns = df.columns.str.strip()
-        # Convert time from seconds to microseconds
         if 'Time' in df.columns:
             df['Time_us'] = df['Time'] * 1e6
         return df
@@ -92,6 +149,10 @@ plots_to_create = [w for w in waveforms_to_plot if data_available.get(w, False)]
 
 if len(plots_to_create) > 0:
     
+    # Set matplotlib font
+    rcParams['font.family'] = font_family
+    rcParams['font.size'] = tick_label_size
+    
     # Create figure with subplots
     num_plots = len(plots_to_create)
     fig, axes = plt.subplots(1, num_plots, figsize=(7*num_plots, 5))
@@ -104,19 +165,22 @@ if len(plots_to_create) > 0:
         ax = axes[idx]
         ax2 = ax.twinx()
         
+        # Set axis line width
+        for spine in ax.spines.values():
+            spine.set_linewidth(axis_linewidth)
+        for spine in ax2.spines.values():
+            spine.set_linewidth(axis_linewidth)
+        
         # Get appropriate data
         if waveform_type == "Square":
             peak_data = square_peaks
             wave_data = square_waveform
-            title_suffix = "Square Wave"
         elif waveform_type == "Triangle":
             peak_data = triangle_peaks
             wave_data = triangle_waveform
-            title_suffix = "Triangle Wave"
         else:  # Sine
-            peak_data = None  # Sine doesn't have peak data in uploads
+            peak_data = None
             wave_data = sine_waveform
-            title_suffix = "Sine Wave"
         
         # Plot intensity bars if peak data exists
         if peak_data is not None:
@@ -146,42 +210,67 @@ if len(plots_to_create) > 0:
             time_wave = wave_data['Time_us'].values
             current = wave_data['Current'].values
             
-            ax2.plot(time_wave, current, color=color_current, 
-                    linewidth=2.5, label='Current')
+            # Apply scale and offset to current
+            current_adjusted = (current * current_scale) + current_offset
+            
+            ax2.plot(time_wave, current_adjusted, color=color_current, 
+                    linewidth=current_linewidth, label='Current')
         
-        # Formatting
-        ax.set_xlabel('Time (μs)', fontsize=16, fontweight='bold')
-        ax.set_ylabel('Intensity (a.u.)', fontsize=16, fontweight='bold')
-        ax2.set_ylabel('Current (mA)', fontsize=16, fontweight='bold', color=color_current)
+        # Axis labels
+        ax.set_xlabel(xlabel_text, fontsize=xlabel_size, fontweight=xlabel_weight)
+        ax.set_ylabel(ylabel_left_text, fontsize=ylabel_size, fontweight=ylabel_weight)
+        ax2.set_ylabel(ylabel_right_text, fontsize=ylabel_size, fontweight=ylabel_weight, 
+                      color=color_current)
         
         # Tick formatting
-        ax.tick_params(axis='both', labelsize=13, width=1.5, length=6)
-        ax2.tick_params(axis='y', labelcolor=color_current, labelsize=13, width=1.5, length=6)
+        ax.tick_params(axis='both', labelsize=tick_label_size, 
+                      width=tick_width, length=tick_length)
+        ax2.tick_params(axis='y', labelcolor=color_current, labelsize=tick_label_size, 
+                       width=tick_width, length=tick_length)
         
-        # Invert intensity axis if requested
+        # Apply axis inversions AFTER all plotting
         if invert_intensity and peak_data is not None:
             ax.invert_yaxis()
         
+        if invert_current:
+            ax2.invert_yaxis()
+        
+        # Set axis limits (after inversion)
+        if not use_auto_limits:
+            ax.set_xlim(time_min, time_max)
+            if peak_data is not None:
+                if invert_intensity:
+                    ax.set_ylim(intensity_max, intensity_min)  # Reversed for inverted axis
+                else:
+                    ax.set_ylim(intensity_min, intensity_max)
+            
+            if invert_current:
+                ax2.set_ylim(current_max, current_min)  # Reversed for inverted axis
+            else:
+                ax2.set_ylim(current_min, current_max)
+        
         # Add panel label
-        panel_label = chr(97 + idx)  # a, b, c
-        ax.text(0.02, 0.98, f'{panel_label})', transform=ax.transAxes, 
-                fontsize=18, fontweight='bold', va='top', ha='left',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+        if show_panel_labels:
+            panel_label = chr(97 + idx)  # a, b, c
+            ax.text(panel_label_x, panel_label_y, f'{panel_label})', 
+                   transform=ax.transAxes, 
+                   fontsize=panel_label_size, fontweight='bold', 
+                   va='top', ha='left',
+                   bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
         
         # Legend
-        if peak_data is not None:
-            ax.legend(loc='upper left', fontsize=11, framealpha=0.95, 
-                     edgecolor='black', fancybox=False)
+        if show_legend and peak_data is not None:
+            ax.legend(loc='upper left', 
+                     bbox_to_anchor=(legend_x, legend_y),
+                     fontsize=legend_fontsize, 
+                     framealpha=legend_framealpha, 
+                     edgecolor='black', 
+                     fancybox=False,
+                     ncol=legend_ncol)
         
         # Grid
         if show_grid:
             ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8)
-        
-        # Set axis limits
-        ax.set_xlim(time_min, time_max)
-        
-        # Title
-        ax.set_title(title_suffix, fontsize=14, fontweight='bold', pad=10)
     
     plt.tight_layout()
     
@@ -192,7 +281,6 @@ if len(plots_to_create) > 0:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Download PNG
         buf_png = io.BytesIO()
         plt.savefig(buf_png, format='png', dpi=300, bbox_inches='tight', facecolor='white')
         buf_png.seek(0)
@@ -204,7 +292,6 @@ if len(plots_to_create) > 0:
         )
     
     with col2:
-        # Download PDF
         buf_pdf = io.BytesIO()
         plt.savefig(buf_pdf, format='pdf', bbox_inches='tight')
         buf_pdf.seek(0)
@@ -216,7 +303,6 @@ if len(plots_to_create) > 0:
         )
     
     with col3:
-        # Download SVG
         buf_svg = io.BytesIO()
         plt.savefig(buf_svg, format='svg', bbox_inches='tight')
         buf_svg.seek(0)
