@@ -32,6 +32,13 @@ waveforms_to_plot = st.sidebar.multiselect(
     default=["Sine", "Square", "Triangle"]
 )
 
+st.sidebar.info("""
+**📊 Axis Behavior:**
+- **Intensity (left)**: Always ≥ 0 (no negative values)
+- **Current (right)**: Can be positive/negative
+- Negative intensities auto-converted to positive by default
+""")
+
 # Font settings
 st.sidebar.subheader("🔤 Font Settings")
 font_family = st.sidebar.selectbox("Font family", 
@@ -94,9 +101,9 @@ if len(plots_to_create) > 0:
             st.session_state.plot_settings[waveform] = {
                 'bar_width': 4.0,
                 'show_grid': True,
-                'invert_intensity': False,
+                'invert_intensity_visual': False,
                 'invert_current': False,
-                'use_abs_intensity': False,
+                'use_abs_intensity': True,
                 'xlabel_text': 'Time (μs)',
                 'ylabel_left_text': 'Intensity (a.u.)',
                 'ylabel_right_text': 'Current (mA)',
@@ -366,11 +373,12 @@ if len(plots_to_create) > 0:
                         key=f'bar_{waveform}'
                     )
                     st.session_state.plot_settings[settings_key]['use_abs_intensity'] = st.checkbox(
-                        "Use absolute intensity values (no negative)", 
-                        st.session_state.plot_settings.get(settings_key, {}).get('use_abs_intensity', False),
+                        "Use absolute intensity values", 
+                        st.session_state.plot_settings.get(settings_key, {}).get('use_abs_intensity', True),
                         key=f'abs_int_{waveform}',
-                        help="Convert all intensity values to positive"
+                        help="Convert negative intensity values to positive (recommended ON)"
                     )
+                    st.info("✓ Intensity bars will only show non-negative values (≥ 0)")
                 else:
                     st.info("No peak intensity data - showing only current waveform")
                 
@@ -381,11 +389,11 @@ if len(plots_to_create) > 0:
                 )
                 
                 if has_peaks:
-                    st.session_state.plot_settings[settings_key]['invert_intensity'] = st.checkbox(
-                        "Invert intensity axis", 
-                        st.session_state.plot_settings[settings_key]['invert_intensity'],
-                        key=f'inv_int_{waveform}',
-                        help="Flip the intensity axis vertically (top ↔ bottom)"
+                    st.session_state.plot_settings[settings_key]['invert_intensity_visual'] = st.checkbox(
+                        "Visually invert intensity bars", 
+                        st.session_state.plot_settings[settings_key].get('invert_intensity_visual', False),
+                        key=f'inv_int_vis_{waveform}',
+                        help="Display bars below zero line (visually inverted) while keeping positive axis values"
                     )
                 
                 st.session_state.plot_settings[settings_key]['invert_current'] = st.checkbox(
