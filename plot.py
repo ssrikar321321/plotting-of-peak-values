@@ -104,7 +104,8 @@ if len(plots_to_create) > 0:
                 'manual_bar_width': False,
                 'bar_width': 3.0,
                 'show_grid': True,
-                'invert_intensity_visual': False,
+                'inversion_mode': 'None',
+                'time_threshold': 125.0,
                 'invert_current': False,
                 'use_abs_intensity': True,
                 'show_error_bars': False,
@@ -210,6 +211,21 @@ if len(plots_to_create) > 0:
                 cluster_width = settings['cluster_fraction'] * base_spacing
                 bar_width = cluster_width / max(len(wavelength_cols), 1)
             
+            # Determine inversion sign for each time point based on mode
+            inversion_sign = np.ones_like(time)  # Default: no inversion
+            
+            if settings['inversion_mode'] == 'Invert where current < 0':
+                # Interpolate current at peak times to determine sign
+                if wave_data is not None and 'Time_us' in wave_data.columns:
+                    time_wave = wave_data['Time_us'].values
+                    current = wave_data['Current'].values
+                    # Interpolate current sign at each peak time
+                    interp_current = np.interp(time, time_wave, current)
+                    inversion_sign = np.where(interp_current < 0, -1.0, 1.0)
+            elif settings['inversion_mode'] == 'Invert after time threshold':
+                # Invert all bars after threshold time
+                inversion_sign = np.where(time >= settings['time_threshold'], -1.0, 1.0)
+            
             # Plot each wavelength with proper clustering
             for i, (label, col_name, color) in enumerate(wavelength_cols):
                 intensity = peak_data[col_name].values
@@ -218,16 +234,15 @@ if len(plots_to_create) > 0:
                 if settings['use_abs_intensity']:
                     intensity = np.abs(intensity)
                 
-                # Apply visual inversion (plot as negative but show positive labels)
-                if settings.get('invert_intensity_visual', False):
-                    intensity = -intensity
+                # Apply conditional inversion
+                intensity_plot = intensity * inversion_sign
                 
                 # Calculate position offset for clustering
                 offset_start = -cluster_width / 2 + bar_width / 2
                 x_pos = time + offset_start + i * bar_width
                 
                 # Plot bars
-                ax.bar(x_pos, intensity, width=bar_width * 0.95, 
+                ax.bar(x_pos, intensity_plot, width=bar_width * 0.95, 
                        label=label, color=color, alpha=0.8, edgecolor='none')
                 
                 # Error bars if enabled
@@ -236,9 +251,8 @@ if len(plots_to_create) > 0:
                     err_col_name = col_name + '_err'
                     if err_col_name in peak_data.columns:
                         err = peak_data[err_col_name].values
-                        if settings.get('invert_intensity_visual', False):
-                            err = -err
-                        ax.errorbar(x_pos, intensity, yerr=np.abs(err), 
+                        err_plot = err * inversion_sign
+                        ax.errorbar(x_pos, intensity_plot, yerr=np.abs(err_plot), 
                                    fmt='none', ecolor=color, capsize=2, alpha=0.6)
         
         # Plot current waveform with time offset
