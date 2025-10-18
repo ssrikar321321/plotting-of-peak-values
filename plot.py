@@ -5,10 +5,10 @@ import matplotlib.pyplot as plt
 from matplotlib import rcParams
 import io
 
-st.set_page_config(page_title="Oscilloscope Spectral Analysis", layout="wide")
+st.set_page_config(page_title="Plasma-Jet Spectral Analysis", layout="wide")
 
-st.title("Spectral Intensity & Current Waveform Analysis")
-st.markdown("*Visualization of intensity peaks at different wavelengths with oscilloscope current measurements*")
+st.title("Plasma-Jet Spectral Intensity & Current Waveform Dashboard")
+st.markdown("*Advanced visualization with clustered bar layout and independent plot controls*")
 
 # File upload section
 st.sidebar.header("📁 Data Files")
@@ -34,9 +34,10 @@ waveforms_to_plot = st.sidebar.multiselect(
 
 st.sidebar.info("""
 **📊 Axis Behavior:**
-- **Intensity (left)**: Always ≥ 0 (no negative values)
+- **Intensity (left)**: Values always positive (≥ 0)
+- **Visual Invert**: Display bars below zero while keeping positive labels
 - **Current (right)**: Can be positive/negative
-- Negative intensities auto-converted to positive by default
+- **Clustered Layout**: Bars automatically grouped within each time step
 """)
 
 # Font settings
@@ -99,11 +100,14 @@ if len(plots_to_create) > 0:
     for waveform in plots_to_create:
         if waveform not in st.session_state.plot_settings:
             st.session_state.plot_settings[waveform] = {
-                'bar_width': 4.0,
+                'cluster_fraction': 0.9,
+                'manual_bar_width': False,
+                'bar_width': 3.0,
                 'show_grid': True,
                 'invert_intensity_visual': False,
                 'invert_current': False,
                 'use_abs_intensity': True,
+                'show_error_bars': False,
                 'xlabel_text': 'Time (μs)',
                 'ylabel_left_text': 'Intensity (a.u.)',
                 'ylabel_right_text': 'Current (mA)',
@@ -172,34 +176,70 @@ if len(plots_to_create) > 0:
             peak_data = sine_peaks
             wave_data = sine_waveform
         
-        # Plot intensity bars if peak data exists
+        # Plot intensity bars if peak data exists with clustered layout
         if peak_data is not None:
             time_col = [col for col in peak_data.columns if 'Time' in col][0]
             
             # Find wavelength columns
-            col_310 = [col for col in peak_data.columns if '310' in col][0]
-            col_337 = [col for col in peak_data.columns if '337' in col][0]
-            col_696 = [col for col in peak_data.columns if '696' in col][0]
+            wavelength_cols = []
+            col_310 = [col for col in peak_data.columns if '310' in col]
+            col_337 = [col for col in peak_data.columns if '337' in col]
+            col_696 = [col for col in peak_data.columns if '696' in col]
+            
+            if col_310:
+                wavelength_cols.append(('310.0 nm', col_310[0], color_310))
+            if col_337:
+                wavelength_cols.append(('337.0 nm', col_337[0], color_337))
+            if col_696:
+                wavelength_cols.append(('696.0 nm', col_696[0], color_696))
             
             time = peak_data[time_col].values
-            int_310 = peak_data[col_310].values
-            int_337 = peak_data[col_337].values
-            int_696 = peak_data[col_696].values
             
-            # Apply absolute values if requested
-            if settings['use_abs_intensity']:
-                int_310 = np.abs(int_310)
-                int_337 = np.abs(int_337)
-                int_696 = np.abs(int_696)
+            # Calculate automatic spacing (clustered bar layout)
+            unique_times = np.unique(np.sort(time))
+            if len(unique_times) >= 2:
+                base_spacing = float(np.median(np.diff(unique_times)))
+            else:
+                base_spacing = 10.0  # default
             
-            # Create bar plots
-            width = settings['bar_width']
-            ax.bar(time - width, int_310, width=width, 
-                   label='310.0 nm', color=color_310, alpha=0.8, edgecolor='none')
-            ax.bar(time, int_337, width=width, 
-                   label='337.0 nm', color=color_337, alpha=0.8, edgecolor='none')
-            ax.bar(time + width, int_696, width=width, 
-                   label='696.0 nm', color=color_696, alpha=0.8, edgecolor='none')
+            # Calculate bar positioning
+            if settings['manual_bar_width']:
+                bar_width = settings['bar_width']
+                cluster_width = bar_width * len(wavelength_cols)
+            else:
+                cluster_width = settings['cluster_fraction'] * base_spacing
+                bar_width = cluster_width / max(len(wavelength_cols), 1)
+            
+            # Plot each wavelength with proper clustering
+            for i, (label, col_name, color) in enumerate(wavelength_cols):
+                intensity = peak_data[col_name].values
+                
+                # Apply absolute values if requested
+                if settings['use_abs_intensity']:
+                    intensity = np.abs(intensity)
+                
+                # Apply visual inversion (plot as negative but show positive labels)
+                if settings.get('invert_intensity_visual', False):
+                    intensity = -intensity
+                
+                # Calculate position offset for clustering
+                offset_start = -cluster_width / 2 + bar_width / 2
+                x_pos = time + offset_start + i * bar_width
+                
+                # Plot bars
+                ax.bar(x_pos, intensity, width=bar_width * 0.95, 
+                       label=label, color=color, alpha=0.8, edgecolor='none')
+                
+                # Error bars if enabled
+                if settings['show_error_bars']:
+                    # Look for error column (with _err suffix or similar)
+                    err_col_name = col_name + '_err'
+                    if err_col_name in peak_data.columns:
+                        err = peak_data[err_col_name].values
+                        if settings.get('invert_intensity_visual', False):
+                            err = -err
+                        ax.errorbar(x_pos, intensity, yerr=np.abs(err), 
+                                   fmt='none', ecolor=color, capsize=2, alpha=0.6)
         
         # Plot current waveform with time offset
         if wave_data is not None and 'Time_us' in wave_data.columns:
@@ -231,6 +271,11 @@ if len(plots_to_create) > 0:
         if peak_data is not None:
             ax.tick_params(axis='both', labelsize=settings['tick_label_size'], 
                           width=settings['tick_width'], length=settings['tick_length'])
+            
+            # If visually inverted, format tick labels to show absolute values
+            if settings.get('invert_intensity_visual', False):
+                from matplotlib.ticker import FuncFormatter
+                ax.yaxis.set_major_formatter(FuncFormatter(lambda x, p: f'{abs(x):.2f}'))
         else:
             # Only x-axis if no peak data
             ax.tick_params(axis='x', labelsize=settings['tick_label_size'], 
@@ -240,14 +285,11 @@ if len(plots_to_create) > 0:
         ax2.tick_params(axis='y', labelcolor=color_current, labelsize=settings['tick_label_size'], 
                        width=settings['tick_width'], length=settings['tick_length'])
         
-        # Apply axis inversions AFTER all plotting
-        if settings['invert_intensity'] and peak_data is not None:
-            ax.invert_yaxis()
-        
+        # Apply axis inversion for current
         if settings['invert_current']:
             ax2.invert_yaxis()
         
-        # Set axis limits (after inversion)
+        # Set axis limits
         if not settings['use_auto_limits']:
             ax.set_xlim(settings['time_min'], settings['time_max'])
             if peak_data is not None:
@@ -255,8 +297,9 @@ if len(plots_to_create) > 0:
                 int_min = max(0.0, float(settings['intensity_min']))
                 int_max = max(int_min + 0.001, float(settings['intensity_max']))
                 
-                if settings['invert_intensity']:
-                    ax.set_ylim(int_max, int_min)
+                # If visually inverted, flip the signs for actual limits but labels stay positive
+                if settings.get('invert_intensity_visual', False):
+                    ax.set_ylim(-int_max, -int_min)
                 else:
                     ax.set_ylim(int_min, int_max)
             
@@ -265,16 +308,14 @@ if len(plots_to_create) > 0:
             else:
                 ax2.set_ylim(settings['current_min'], settings['current_max'])
         else:
-            # Auto limits - ensure intensity doesn't go negative
+            # Auto limits - ensure intensity doesn't go negative (unless visually inverted)
             if peak_data is not None:
                 current_ylim = ax.get_ylim()
-                if current_ylim[0] < 0 or current_ylim[1] < 0:
-                    # Adjust to ensure non-negative
-                    new_min = max(0.0, min(current_ylim))
-                    new_max = max(current_ylim)
-                    if settings['invert_intensity']:
-                        ax.set_ylim(new_max, new_min)
-                    else:
+                if not settings.get('invert_intensity_visual', False):
+                    # Normal mode - keep positive
+                    if current_ylim[0] < 0 or current_ylim[1] < 0:
+                        new_min = max(0.0, min(current_ylim))
+                        new_max = max(current_ylim)
                         ax.set_ylim(new_min, new_max)
         
         # Add panel label (no box)
@@ -343,7 +384,7 @@ if len(plots_to_create) > 0:
     # Individual plot settings
     st.markdown("---")
     st.header("🎛️ Individual Plot Settings")
-    st.info("💡 **Axis Types:** Intensity (left y-axis) must be ≥ 0 | Current (right y-axis) can be positive/negative")
+    st.info("💡 **Clustered Bar Layout:** Bars automatically positioned within each time step | **Intensity axis:** Values displayed as positive (≥ 0)")
     
     # Create tabs for each plot
     tabs = st.tabs([f"Plot {chr(97 + i)}) - {waveform}" for i, waveform in enumerate(plots_to_create)])
@@ -352,33 +393,63 @@ if len(plots_to_create) > 0:
         with tab:
             settings_key = waveform
             
+            # Check if this waveform has peak data
+            has_peaks = False
+            if waveform == "Square" and square_peaks is not None:
+                has_peaks = True
+            elif waveform == "Triangle" and triangle_peaks is not None:
+                has_peaks = True
+            elif waveform == "Sine" and sine_peaks is not None:
+                has_peaks = True
+            
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 st.subheader("📊 Plot Elements")
                 
-                # Check if this waveform has peak data
-                has_peaks = False
-                if waveform == "Square" and square_peaks is not None:
-                    has_peaks = True
-                elif waveform == "Triangle" and triangle_peaks is not None:
-                    has_peaks = True
-                elif waveform == "Sine" and sine_peaks is not None:
-                    has_peaks = True
-                
                 if has_peaks:
-                    st.session_state.plot_settings[settings_key]['bar_width'] = st.slider(
-                        "Bar width (μs)", 1.0, 8.0, 
-                        st.session_state.plot_settings[settings_key]['bar_width'], 0.5, 
-                        key=f'bar_{waveform}'
+                    st.markdown("**Bar Clustering:**")
+                    st.session_state.plot_settings[settings_key]['cluster_fraction'] = st.slider(
+                        "Cluster width fraction", 0.1, 1.0,
+                        st.session_state.plot_settings[settings_key]['cluster_fraction'], 0.05,
+                        key=f'cluster_{waveform}',
+                        help="Fraction of time step filled by bar cluster (0.9 = 90%)"
                     )
+                    
+                    st.session_state.plot_settings[settings_key]['manual_bar_width'] = st.checkbox(
+                        "Manual bar width", 
+                        st.session_state.plot_settings[settings_key]['manual_bar_width'],
+                        key=f'manual_bar_{waveform}'
+                    )
+                    
+                    if st.session_state.plot_settings[settings_key]['manual_bar_width']:
+                        st.session_state.plot_settings[settings_key]['bar_width'] = st.slider(
+                            "Bar width (μs)", 0.5, 10.0,
+                            st.session_state.plot_settings[settings_key]['bar_width'], 0.1,
+                            key=f'bar_w_{waveform}'
+                        )
+                    
                     st.session_state.plot_settings[settings_key]['use_abs_intensity'] = st.checkbox(
                         "Use absolute intensity values", 
-                        st.session_state.plot_settings.get(settings_key, {}).get('use_abs_intensity', True),
+                        st.session_state.plot_settings[settings_key]['use_abs_intensity'],
                         key=f'abs_int_{waveform}',
-                        help="Convert negative intensity values to positive (recommended ON)"
+                        help="Convert negative intensity values to positive"
                     )
-                    st.info("✓ Intensity bars will only show non-negative values (≥ 0)")
+                    
+                    st.session_state.plot_settings[settings_key]['show_error_bars'] = st.checkbox(
+                        "Show error bars", 
+                        st.session_state.plot_settings[settings_key]['show_error_bars'],
+                        key=f'err_bars_{waveform}',
+                        help="Show error bars if _err columns exist"
+                    )
+                    
+                    st.session_state.plot_settings[settings_key]['invert_intensity_visual'] = st.checkbox(
+                        "Visually invert intensity bars", 
+                        st.session_state.plot_settings[settings_key].get('invert_intensity_visual', False),
+                        key=f'inv_int_vis_{waveform}',
+                        help="Display bars below zero line while keeping positive axis values"
+                    )
+                    st.info("✓ Bars auto-clustered within each time step")
                 else:
                     st.info("No peak intensity data - showing only current waveform")
                 
@@ -388,19 +459,11 @@ if len(plots_to_create) > 0:
                     key=f'grid_{waveform}'
                 )
                 
-                if has_peaks:
-                    st.session_state.plot_settings[settings_key]['invert_intensity_visual'] = st.checkbox(
-                        "Visually invert intensity bars", 
-                        st.session_state.plot_settings[settings_key].get('invert_intensity_visual', False),
-                        key=f'inv_int_vis_{waveform}',
-                        help="Display bars below zero line (visually inverted) while keeping positive axis values"
-                    )
-                
                 st.session_state.plot_settings[settings_key]['invert_current'] = st.checkbox(
                     "Invert current axis", 
                     st.session_state.plot_settings[settings_key]['invert_current'],
                     key=f'inv_cur_{waveform}',
-                    help="Flip the current axis vertically (top ↔ bottom)"
+                    help="Flip the current axis vertically"
                 )
                 
                 st.markdown("**Current Waveform:**")
@@ -494,15 +557,6 @@ if len(plots_to_create) > 0:
             with col3:
                 st.subheader("📌 Legend & Panel Label")
                 
-                # Check if this waveform has peak data
-                has_peaks = False
-                if waveform == "Square" and square_peaks is not None:
-                    has_peaks = True
-                elif waveform == "Triangle" and triangle_peaks is not None:
-                    has_peaks = True
-                elif waveform == "Sine" and sine_peaks is not None:
-                    has_peaks = True
-                
                 if has_peaks:
                     st.session_state.plot_settings[settings_key]['show_legend'] = st.checkbox(
                         "Show legend", 
@@ -570,7 +624,10 @@ if len(plots_to_create) > 0:
                 
                 if not st.session_state.plot_settings[settings_key]['use_auto_limits']:
                     if has_peaks:
-                        st.info("💡 Intensity axis: values must be ≥ 0 | Current axis: can be negative")
+                        if st.session_state.plot_settings[settings_key].get('invert_intensity_visual', False):
+                            st.info("💡 Visual invert ON: Bars below zero, labels positive | Current: can be negative")
+                        else:
+                            st.info("💡 Intensity: values ≥ 0 | Current: can be negative")
                     
                     subcol1, subcol2 = st.columns(2)
                     with subcol1:
@@ -585,7 +642,7 @@ if len(plots_to_create) > 0:
                                 value=float(st.session_state.plot_settings[settings_key]['intensity_min']),
                                 format="%.3f", 
                                 key=f'imin_{waveform}',
-                                help="Intensity values must be >= 0"
+                                help="Minimum intensity (positive, shown as absolute)"
                             )
                         st.session_state.plot_settings[settings_key]['current_min'] = st.number_input(
                             "Current min (mA)", value=st.session_state.plot_settings[settings_key]['current_min'],
@@ -603,7 +660,7 @@ if len(plots_to_create) > 0:
                                 value=float(st.session_state.plot_settings[settings_key]['intensity_max']),
                                 format="%.3f", 
                                 key=f'imax_{waveform}',
-                                help="Intensity values must be > 0"
+                                help="Maximum intensity (must be > 0)"
                             )
                         st.session_state.plot_settings[settings_key]['current_max'] = st.number_input(
                             "Current max (mA)", value=st.session_state.plot_settings[settings_key]['current_max'],
@@ -663,32 +720,44 @@ if len(plots_to_create) > 0:
 else:
     st.info("👈 Please upload data files from the sidebar to generate visualizations")
     
-    with st.expander("📋 Required File Formats"):
+    with st.expander("📋 File Formats & Features"):
         st.markdown("""
         ### Peak Intensity Files (CSV)
         **Columns:** `Time(us), 310.0 nm, 337.0 nm, 696.00 nm`
-        - Square: `square_peak_comparison.csv` (Required if showing square)
-        - Triangle: `Triangle_peak_comparison.csv` (Required if showing triangle)
-        - Sine: Peak data file (Optional - sine can show current waveform only)
-        
-        **Note:** Intensity values should be non-negative (≥ 0). If your data contains negative values, 
-        use the "Use absolute intensity values" option to convert them to positive.
+        - Optional: Add `_err` suffix columns for error bars (e.g., `310.0 nm_err`)
         
         ### Waveform Files (CSV)
         **Columns:** `Time, Voltage, Current`
-        - Time in seconds (will be converted to μs)
-        - Current in mA (can be positive or negative)
-        - Files:
-          - `Square Power Calculation_SINGLE CHANNEL 1.csv`
-          - `Triangular Power Calculation__SINGLE CHANNEL.csv`
-          - `Sine Power Calculation_SINGLE CHANNEL 1.csv`
+        - Time in seconds (auto-converted to μs)
+        - Current in mA (can be positive/negative)
         
-        ### Axis Constraints:
-        - **Intensity Axis (left)**: Must be ≥ 0 (peak values cannot be negative)
-        - **Current Axis (right)**: Can have both positive and negative values
-        - **Time Axis**: Typically starts at 0, measured in microseconds (μs)
+        ### Key Features:
+        **1. Clustered Bar Layout** (from plasma-jet code)
+        - Bars automatically grouped within each time step
+        - Adjustable cluster width fraction (default 90%)
+        - Manual or automatic bar width calculation
+        - No overlapping between time groups
+        
+        **2. Visual Inversion**
+        - Display bars below zero line while keeping positive labels
+        - Perfect for matching negative current waveform sections
+        
+        **3. Error Bars**
+        - Automatic detection of `_err` columns
+        - Toggle on/off per plot
+        
+        **4. Independent Plot Controls**
+        - Each plot has separate settings
+        - Time offset for current waveform
+        - Precise legend and label positioning
+        - Full font and axis customization
+        
+        **5. Professional Export**
+        - PNG (300 DPI), PDF, SVG formats
+        - Times New Roman font support
+        - Publication-ready quality
         """)
 
 # Footer
 st.markdown("---")
-st.markdown("**Oscilloscope Spectral Intensity Dashboard** | Data visualization for plasma spectroscopy measurements")
+st.markdown("**Plasma-Jet Spectral Intensity Dashboard** | Enhanced with clustered bar layout and advanced controls")
